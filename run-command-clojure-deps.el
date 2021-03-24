@@ -89,8 +89,12 @@
                          base)))
                    (seq-concatenate 'list project-cmds global-cmds)))))))
 
-(with-eval-after-load 'run-command
-  (add-to-list 'run-command-recipes 'run-command-recipe-clj-commands))
+;;;###autoload
+(defun run-command-clojure-deps-register ()
+  "Register recipes fr handling deps.edn files."
+  (interactive)
+  (with-eval-after-load 'run-command
+    (add-to-list 'run-command-recipes 'run-command-recipe-clj-commands)))
 
 (provide 'run-command-clojure-deps)
 ;;; run-command-clojure-deps.el ends here
