@@ -32,6 +32,7 @@
 (require 'seq)
 (require 's)
 (require 'parseedn)
+(require 'cl-macs)
 
 (defgroup run-command-clojure-deps nil
   "Easy way to launch shell commands from deps.edn files."
@@ -63,9 +64,9 @@
     (let* ((content (car (parseedn-read)))
            (commands (gethash :emacs/run-commands content))
            (raw-aliases (gethash :aliases content))
-           (selected-aliases (loop for v being each hash-value of raw-aliases
-                                   using (hash-key k)
-                                   collect (alias->command k v))))
+           (selected-aliases (cl-loop for v being each hash-value of raw-aliases
+                                      using (hash-key k)
+                                      collect (alias->command k v))))
       (seq-concatenate 'list
        (seq-filter #'run-command-clojure-deps--valid-command-p commands)
        (seq-filter #'identity selected-aliases)))))
