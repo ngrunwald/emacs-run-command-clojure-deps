@@ -4,7 +4,7 @@
 ;; Author: Nils Grunwald
 ;; URL: https://github.com/ngrunwald/emacs-run-command-clojure-deps
 ;; Created: 2021
-;; Version: 0.1.0
+;; Version: 0.1.1
 ;; Keywords: clojure, clojurescript, shell, clj, deps
 ;; Package-Requires: ((parseedn "20200419.1124"))
 
@@ -33,6 +33,7 @@
 (require 's)
 (require 'parseedn)
 (require 'cl-macs)
+(require 'subr-x)
 
 (defgroup run-command-clojure-deps nil
   "Easy way to launch shell commands from deps.edn files."
@@ -54,8 +55,9 @@
              (alias-str (substring (symbol-name alias-name) 1)))
         (puthash :command-name alias-str ht)
         (puthash :command-line (format "clj %s%s" switch alias-str) ht)
-        (when display
-          (puthash :display display ht))
+        (puthash :display (format "[alias]%s"
+                                  (if display (s-concat " " display) ""))
+                 ht)
         ht))))
 
 (defun run-command-clojure-deps--parse-deps-edn-file (path)
@@ -68,34 +70,45 @@
                                       using (hash-key k)
                                       collect (alias->command k v))))
       (seq-concatenate 'list
-       (seq-filter #'run-command-clojure-deps--valid-command-p commands)
-       (seq-filter #'identity selected-aliases)))))
+                       (thread-last commands
+                         (seq-filter #'run-command-clojure-deps--valid-command-p)
+                         (seq-map (lambda (cmd) (puthash :display
+                                                         (format "[cmd]%s" (s-concat " "
+                                                                                     (gethash :display cmd "")))
+                                                         cmd)
+                                    cmd)))
+                       (seq-filter #'identity selected-aliases)))))
 
-(defun run-command-recipe-clj-commands ()
+(defun run-command-clj-commands-from-dir (deps-file-path project-dir)
+  (let* ((default-directory project-dir)
+         (project-cmds (run-command-clojure-deps--parse-deps-edn-file deps-file-path)))
+    (seq-map (lambda (elt)
+               (let* ((command-name (gethash :command-name elt)))
+                 (list :command-name command-name
+                       :command-line (gethash :command-line elt)
+                       :working-dir project-dir
+                       :display (format "%s → %s" command-name (gethash :display elt)))))
+             project-cmds)))
+
+(defun run-command-recipe-clj-project ()
   (when (derived-mode-p 'clojure-mode)
-    (let ((project-dir (locate-dominating-file default-directory "deps.edn")))
-      (when project-dir
-        (let* ((default-directory project-dir)
-               (project-deps-path (s-concat (file-name-as-directory project-dir) "deps.edn"))
-               (project-cmds (run-command-clojure-deps--parse-deps-edn-file project-deps-path))
-               (global-cmds (run-command-clojure-deps--parse-deps-edn-file "~/.clojure/deps.edn")))
-          (seq-map (lambda (elt)
-                     (let ((base (list :command-name (gethash :command-name elt)
-                                       :command-line (gethash :command-line elt)
-                                       :working-dir project-dir
-                                       :scope-name project-dir))
-                           (display (gethash :display elt)))
-                       (if display
-                           (seq-concatenate 'list base (list :display display))
-                         base)))
-                   (seq-concatenate 'list project-cmds global-cmds)))))))
+    (when-let ((project-dir (locate-dominating-file default-directory "deps.edn"))
+               (deps-file-path (s-concat (file-name-as-directory project-dir) "deps.edn")))
+      (run-command-clj-commands-from-dir deps-file-path project-dir))))
+
+(defun run-command-recipe-clj-user ()
+  (when (derived-mode-p 'clojure-mode)
+    (if-let ((project-dir (locate-dominating-file default-directory "deps.edn")))
+        (run-command-clj-commands-from-dir "~/.clojure/deps.edn" project-dir)
+      (run-command-clj-commands-from-dir "~/.clojure/deps.edn" default-directory))))
 
 ;;;###autoload
 (defun run-command-clojure-deps-register ()
   "Register recipes fr handling deps.edn files."
   (interactive)
   (with-eval-after-load 'run-command
-    (add-to-list 'run-command-recipes 'run-command-recipe-clj-commands)))
+    (add-to-list 'run-command-recipes 'run-command-recipe-clj-project)
+    (add-to-list 'run-command-recipes 'run-command-recipe-clj-user)))
 
 (provide 'run-command-clojure-deps)
 ;;; run-command-clojure-deps.el ends here
